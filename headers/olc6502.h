@@ -1,20 +1,49 @@
 #pragma once
 #include <bus.h>
 
+class Bus;
+
 class Olc6502
 {
-
 //set up of the CPU
 public:
     Olc6502();
     ~Olc6502();
 
-    connectBus(Bus *b){bus = b};
+    void connectBus(Bus *b){bus = b; }
 
+public:
+	// These are the 6502 CPU registers
+    uint8_t accReg = 0x00; //accumalator register
+    uint8_t xReg = 0x00; //X register
+    uint8_t yReg = 0x00; //Y register
+    uint8_t stckPtr = 0x00; //stack pointer (points to a location on the bus)
+    uint16_t prgrmCtnr = 0x0000; //program counter (16-bit)
+    uint8_t statusReg = 0x00; //status register (8-bit)
+
+	// enumeration of the bits of the status register. 6502 is an 8-bit architecture
+    enum FLAGS6502		
+						// status registers reflects the results of each instruction executed and general state of the CPU
+	{
+        C = (1 << 0), // carry bit: the carry or borrow from the most significant bit during arithmetic operations
+        Z = (1 << 1), // zero: when result of operation is 0
+        I = (1 << 2), // disable interrupts: interrupts from external sources are disabled.
+        D = (1 << 3), // decimal mode (not needed)
+        B = (1 << 4), // break:  indicate that the interrupt was caused by a software breakpoint
+        U = (1 << 5), // unused
+        V = (1 << 6), // overflow: when processor uses signed variables
+        N = (1 << 7), // negative: when processor uses signed variables
+    };
+    
+	// Event Functions (asserts change in state)
+	void clock();	// indicates to cpu that we want 1 clock cycle to occur
+	void reset();   // reset the cpu to a known state
+	void irq();     // interrupt request signal
+	void nmi();     // non-maskable interrupt request signal
+};
 
 //any devices the cpu is connected to
 private:
-    
     Bus *bus = nullptr;
 
 private: 
@@ -82,8 +111,16 @@ private:
 	// I capture all "unofficial" opcodes with this function. It is
 	// functionally identical to a NOP
 	uint8_t XXX();
+
+	uint8_t fetch(); // fetches data from the bus
+
+	uint8_t fetched = 0x00; // data fetched from the bus
+	uint16_t addr_abs = 0x0000; // absolute address. to read from diff locations of memory
+	uint16_t addr_rel = 0x0000; // relative address. in 6502, branch can only jump certain distance from current location which is why we need relative addr
+	uint8_t opcode = 0x00; // current opcode
+	uint8_t cycles = 0; // number of cycles the instruction has remaining
     
-//main functions of the cpu
+
 private:
     uint8_t read(uint16_t addy);
     void write(uint16_t addy, uint8_t data);
@@ -91,27 +128,14 @@ private:
     void setFlag(FLAGS6502 f, bool v);
     uint8_t getFlag(FLAGS6502 f);
 
-//any important vairables the cpu needs accsess to
-public:
+	struct INSTRUCTION			// This structure stores all the properties of a specific instruction
+	{
+		std::string name;						// Name of the instruction - used for disassembly listing
+		uint8_t(Olc6502::*operate)(void) = nullptr;	// Function pointer to the implementation of the operation (one of Opcodes)
+		uint8_t(Olc6502::*addrmode)(void) = nullptr;	// Function pointer to the implementation of the address mode (one of Adress Modes)
+		uint8_t cycles = 0;						// Number of clock cycles needed for the instruction to execute
+	};
 
-    enum FLAGS6502{
-        C = (1 << 0), //carry bit
-        Z = (1 << 1), //zero 
-        I = (1 << 2), //disable interrupts
-        D = (1 << 3), //decimal mode
-        B = (1 << 4), //break
-        U = (1 << 5), //unused
-        V = (1 << 6), //overflow
-        V = (1 << 7), //negative
-    };
+	std::vector<INSTRUCTION> lookup;
+	
 
-    uint8_t accReg = 0x00; //accumalator register
-    uint8_t xReg = 0x00; //X register
-    uint8_t yReg = 0x00; //Y register
-
-    uint8_t stckPtr = 0x00; //stack pointer 
-    uint16_t prgrmCtnr = 0x0000; //program counter 
-
-    uint8_t statusReg = 0x00; //status register
-    
-};

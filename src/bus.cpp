@@ -1,28 +1,30 @@
 #include <bus.h>
 
-Bus()
+Bus::Bus()
 {
-    //connect the cpu to the bus
+    //connect the cpu to the bus, function from olc6502.h
     cpu.connectBus(this);   
-    // intialize the fake ram to 0
+
+    // intialize the RAM content to empty
     for (u_int8_t &i : ram)
     {
         i = 0x00;
     }
 }
 
-~Bus()
+Bus::~Bus()
 {
 }
 
-void write(uint16_t addy, uint8_t data)
+// only device on bus is RAM
+void Bus::write(uint16_t addy, uint8_t data)
 {
-    if(addy >=  0x0000 && addy <= 0xFFFF){
-        ram[addy] = data;
+    if(addy >=  0x0000 && addy <= 0xFFFF){      // guard against invalid memory access
+        ram[addy] = data;                // write to RAM
     }
 }
 
-uint8_t read(uint16_t addy, bool isReadOnly = false)
+uint8_t Bus::read(uint16_t addy, bool isReadOnly = false)
 {
     if(addy >=  0x0000 && addy <= 0xFFFF ){
         return ram[addy];

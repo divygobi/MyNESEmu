@@ -15,7 +15,7 @@ public:
     // Devices on the bus
     Olc6502 cpu;
 
-    // dummy ram
+    // dummy 64 kilobyte ram
     std::array<u_int8_t, 64 * 1024> ram;
 
 public:
