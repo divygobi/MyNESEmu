@@ -37,6 +37,8 @@ public:
     
 	// Event Functions (asserts change in state)
 	void clock();	// indicates to cpu that we want 1 clock cycle to occur
+
+	// These functions will let CPU finish instruction before running 
 	void reset();   // reset the cpu to a known state
 	void irq();     // interrupt request signal
 	void nmi();     // non-maskable interrupt request signal
