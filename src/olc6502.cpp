@@ -3,7 +3,7 @@
 Olc6502();
 ~Olc6502();
 uint8_t read(uint16_t addy){
-    bus->read(addy, false);
+    return bus->read(addy, false);
 
 }
 
