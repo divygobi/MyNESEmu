@@ -3,12 +3,12 @@
 
 class Bus;
 
-class Olc6502
+class cpu6502
 {
 //set up of the CPU
 public:
-    Olc6502();
-    ~Olc6502();
+    cpu6502();
+    ~cpu6502();
 
     void connectBus(Bus *b){bus = b; }
 
@@ -133,8 +133,8 @@ private:
 	struct INSTRUCTION			// This structure stores all the properties of a specific instruction
 	{
 		std::string name;						// Name of the instruction - used for disassembly listing
-		uint8_t(Olc6502::*operate)(void) = nullptr;	// Function pointer to the implementation of the operation (one of Opcodes)
-		uint8_t(Olc6502::*addrmode)(void) = nullptr;	// Function pointer to the implementation of the address mode (one of Adress Modes)
+		uint8_t(cpu6502::*operate)(void) = nullptr;	// Function pointer to the implementation of the operation (one of Opcodes)
+		uint8_t(cpu6502::*addrmode)(void) = nullptr;	// Function pointer to the implementation of the address mode (one of Adress Modes)
 		uint8_t cycles = 0;						// Number of clock cycles needed for the instruction to execute
 	};
 

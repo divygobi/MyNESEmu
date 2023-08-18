@@ -1,7 +1,7 @@
-#include <olc6502.h>
+#include <cpu6502.h>
 
-Olc6502();
-~Olc6502();
+cpu6502();
+~cpu6502();
 uint8_t read(uint16_t addy){
     return bus->read(addy, false);
 

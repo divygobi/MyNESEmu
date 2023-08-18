@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <olc6502.h>
+#include <cpu6502.h>
 #include <array>
 
 class Bus
@@ -13,7 +13,7 @@ public:
 
 public:
     // Devices on the bus
-    Olc6502 cpu;
+    cpu6502 cpu;
 
     // dummy 64 kilobyte ram
     std::array<u_int8_t, 64 * 1024> ram;

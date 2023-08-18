@@ -2,7 +2,7 @@
 
 Bus::Bus()
 {
-    //connect the cpu to the bus, function from olc6502.h
+    //connect the cpu to the bus, function from cpu6502.h
     cpu.connectBus(this);   
 
     // intialize the RAM content to empty
