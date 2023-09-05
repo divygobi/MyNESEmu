@@ -1,4 +1,5 @@
-#include <cpu6502.h>
+#include "../headers/cpu6502.h"
+#include <map>
 
 cpu6502::cpu6502()
 {
@@ -37,11 +38,11 @@ cpu6502::cpu6502()
 ~cpu6502();
 
 uint8_t read(uint16_t addy){
-    return bus->read(addy, false);
+    return bus->cpuRead(addy, false);
 }
 
 void cpu6502::write(uint16_t addy, uint8_t data){
-    bus->write(addy, data);
+    bus->cpuWrite(addy, data);
 }
 
 void cpu6502::clock()
@@ -66,6 +67,101 @@ void cpu6502::clock()
 	}
     cycles--;   // executing instruction at one point in time, meaning one tick has passed 
 }
+
+
+//INTERRUPT FUNCTIONS BELOW
+// reset the cpu to a known state
+void cpu6502::reset(){
+    accReg = 0;
+    xReg = 0;
+    yReg = 0;
+    stckPtr = 0xFD;
+    status = 0x00 | U;
+
+    //set the PC to FFFC
+    addr_abs = 0xFFFC;
+	uint16_t lo = read(addr_abs + 0);
+	uint16_t hi = read(addr_abs + 1);
+
+	// Set it
+	pc = (hi << 8) | lo;
+
+    // Clear internal helper variables
+	addr_rel = 0x0000;
+	addr_abs = 0x0000;
+	fetched = 0x00;
+
+	// Reset takes time
+	cycles = 8;
+}
+
+// Interrupt requests are a complex operation and only happen if the
+// "disable interrupt" flag is 0. IRQs can happen at any time, but
+// you dont want them to be destructive to the operation of the running 
+// program. Therefore the current instruction is allowed to finish
+// (which I facilitate by doing the whole thing when cycles == 0) and 
+// then the current program counter is stored on the stack. Then the
+// current status register is stored on the stack. When the routine
+// that services the interrupt has finished, the status register
+// and program counter can be restored to how they where before it 
+// occurred. This is impemented by the "RTI" instruction. Once the IRQ
+// has happened, in a similar way to a reset, a programmable address
+// is read form hard coded location 0xFFFE, which is subsequently
+// set to the program counter.
+void cpu6502::irq(){
+    if(getFlag(I) == 0){
+        //push the program counter to the stack
+        write(0x0100 + stckPtr, (pc >> 8) & 0x00FF);
+        stckPtr--;
+        write(0x0100 + stckPtr, pc & 0x00FF);
+        stckPtr--;
+
+        //push the status register to the stack
+        setFlag(B, 0);
+        setFlag(U, 1);
+        setFlag(I, 1);
+        write(0x0100 + stckPtr, status);
+        stckPtr--;
+
+        //set the program counter to the address at FFFA
+        addr_abs = 0xFFFE;
+        uint16_t lo = read(addr_abs + 0);
+        uint16_t hi = read(addr_abs + 1);
+        pc = (hi << 8) | lo;
+
+        //IRQ takes time
+        cycles = 7;
+    }
+}
+
+// A Non-Maskable Interrupt cannot be ignored. It behaves in exactly the
+// same way as a regular IRQ, but reads the new program counter address
+// form location 0xFFFA
+void cpu6502::nmi(){
+    //push the program counter to the stack
+    write(0x0100 + stckPtr, (pc >> 8) & 0x00FF);
+    stckPtr--;
+    write(0x0100 + stckPtr, pc & 0x00FF);
+    stckPtr--;
+
+    //push the status register to the stack
+    setFlag(B, 0);
+    setFlag(U, 1);
+    setFlag(I, 1);
+    write(0x0100 + stckPtr, status);
+    stckPtr--;
+
+    //set the program counter to the address at FFFA
+    addr_abs = 0xFFFA;
+    uint16_t lo = read(addr_abs + 0);
+    uint16_t hi = read(addr_abs + 1);
+    pc = (hi << 8) | lo;
+
+    //IRQ takes time
+    cycles = 8;
+}
+
+
 
 //set and get flag functions
 uint8_t cpu6502::getFlag(FLAGS6502 f)
@@ -287,19 +383,19 @@ uint8_t cpu6502::ADC(){
 	
 	// Add is performed in 16-bit domain for emulation to capture any
 	// carry bit, which will exist in bit 8 of the 16-bit word
-	temp = (uint16_t)a + (uint16_t)fetched + (uint16_t)GetFlag(C);
+	temp = (uint16_t)a + (uint16_t)fetched + (uint16_t)getFlag(C);
 	
 	// The carry flag out exists in the high byte bit 0
-	SetFlag(C, temp > 255);
+	setFlag(C, temp > 255);
 	
 	// The Zero flag is set if the result is 0
-	SetFlag(Z, (temp & 0x00FF) == 0);
+	setFlag(Z, (temp & 0x00FF) == 0);
 	
 	// The signed Overflow flag is set based on all that up there! :D
-	SetFlag(V, (~((uint16_t)a ^ (uint16_t)fetched) & ((uint16_t)a ^ (uint16_t)temp)) & 0x0080);
+	setFlag(V, (~((uint16_t)a ^ (uint16_t)fetched) & ((uint16_t)a ^ (uint16_t)temp)) & 0x0080);
 	
 	// The negative flag is set to the most significant bit of the result
-	SetFlag(N, temp & 0x80);
+	setFlag(N, temp & 0x80);
 	
 	// Load the result into the accumulator (it's 8-bit dont forget!)
 	accReg = temp & 0x00FF;
@@ -321,9 +417,9 @@ uint8_t cpu6502::ASL()
     fetch();
     //puts it into a 16 bit domain to capture the carry bit
     temp = (uint16_t)fetched << 1;
-    SetFlag(C, (temp & 0xFF00) > 0);
-    SetFlag(Z, (temp & 0x00FF) == 0x00);
-    SetFlag(N, temp & 0x80);
+    setFlag(C, (temp & 0xFF00) > 0);
+    setFlag(Z, (temp & 0x00FF) == 0x00);
+    setFlag(N, temp & 0x80);
     if (lookup[opcode].addrmode == &cpu6502::IMP)
         accReg = temp & 0x00FF;
     else
@@ -334,7 +430,7 @@ uint8_t cpu6502::ASL()
 //BRANCH IF HTE CARRY BIT IT NOT SET
 uint8_t cpu6502::BCC()
 {
-	if (GetFlag(C) == 0)
+	if (getFlag(C) == 0)
 	{
         //increments cycle counter because we are branching 
 		cycles++;
@@ -353,7 +449,7 @@ uint8_t cpu6502::BCC()
 //BRANCH IF HTE CARRY BIT IS SET
 uint8_t cpu6502::BCS()
 {
-	if (GetFlag(C) == 1)
+	if (getFlag(C) == 1)
 	{
         //increments cycle counter because we are branching 
 		cycles++;
@@ -372,7 +468,7 @@ uint8_t cpu6502::BCS()
 //If you do some operation to check if things are equal, you can do something like load accumalator(a) then subtract(b) 
 //and then check the zero bit. this is an equality check yfm
 uint8_t cpu6502::BEQ(){
-    if (GetFlag(Z) == 1){
+    if (getFlag(Z) == 1){
         //increments cycle counter because we are branching 
 		cycles++;
 		addr_abs = pc + addr_rel;
@@ -394,15 +490,15 @@ uint8_t cpu6502::BIT()
 {
 	fetch();
 	temp = accReg & fetched;
-	SetFlag(Z, (temp & 0x00FF) == 0x00);
-	SetFlag(N, fetched & (1 << 7));
-	SetFlag(V, fetched & (1 << 6));
+	setFlag(Z, (temp & 0x00FF) == 0x00);
+	setFlag(N, fetched & (1 << 7));
+	setFlag(V, fetched & (1 << 6));
 	return 0;
 }
 
 //BRANCH IS NEGATIVE
 uint8_t cpu6502::BMI(){
-    if (GetFlag(N) == 1){
+    if (getFlag(N) == 1){
         //increments cycle counter because we are branching 
         cycles++;
         addr_abs = pc + addr_rel;
@@ -420,7 +516,7 @@ uint8_t cpu6502::BMI(){
 
 //branch if not equalt (if zero but is not set)
 uint8_t cpu6502:BNE(){
-    if (GetFlag(Z)==0){
+    if (getFlag(Z)==0){
         //increments cycle counter because we are branching 
         cycles++;
         addr_abs = pc + addr_rel;
@@ -436,7 +532,7 @@ uint8_t cpu6502:BNE(){
 
 //branch if postive
 uint8_t cpu6502:BPL(){
-     if (GetFlag(N)==0){
+     if (getFlag(N)==0){
         //increments cycle counter because we are branching 
         cycles++;
         addr_abs = pc + addr_rel;
@@ -456,20 +552,20 @@ uint8_t cpu6502:BRK(){
 	pc++;
 	
     //sets the interuppt flag
-	SetFlag(I, 1);
+	setFlag(I, 1);
     //writes the high byte of program counter to the stack
-	write(0x0100 + stkp, (pc >> 8) & 0x00FF);
-	stkp--;
+	write(0x0100 + stckPtr, (pc >> 8) & 0x00FF);
+	stckPtr--;
     //writes the low byte of the program counter to the stack
-	write(0x0100 + stkp, pc & 0x00FF);
-	stkp--;
+	write(0x0100 + stckPtr, pc & 0x00FF);
+	stckPtr--;
 
     //sets the break flag(indicates that the interrupt was caused by a software breakpoint)
-	SetFlag(B, 1);
+	setFlag(B, 1);
     //writes the status register to the stack
-	write(0x0100 + stkp, status);
-	stkp--;
-	SetFlag(B, 0);
+	write(0x0100 + stckPtr, status);
+	stckPtr--;
+	setFlag(B, 0);
     
     //sets program counter to contents of some random frick off address at the end of the memory
 	pc = (uint16_t)read(0xFFFE) | ((uint16_t)read(0xFFFF) << 8);
@@ -479,7 +575,7 @@ uint8_t cpu6502:BRK(){
 
 uint8_t cpu6502::BVC()
 {
-    if (GetFlag(V) == 0)
+    if (getFlag(V) == 0)
     {
         //increments cycle counter because we are branching 
         cycles++;
@@ -496,7 +592,7 @@ uint8_t cpu6502::BVC()
 
 uint8_t cpu6502::BVS()
 {
-    if (GetFlag(V) == 1)
+    if (getFlag(V) == 1)
     {
         //increments cycle counter because we are branching 
         cycles++;
@@ -515,25 +611,25 @@ uint8_t cpu6502::BVS()
 
 uint8_t cpu6502::CLC()
 {
-    SetFlag(C, false);
+    setFlag(C, false);
     return 0;
 }
 
 uint8_t cpu6502::CLD()
 {
-    SetFlag(D, false);
+    setFlag(D, false);
     return 0;
 }
 
 uint8_t cpu6502::CLI()
 {
-    SetFlag(I, false);
+    setFlag(I, false);
     return 0;
 }
 
 uint8_t cpu6502::CLV()
 {
-    SetFlag(V, false);
+    setFlag(V, false);
     return 0;
 }
 
@@ -544,11 +640,11 @@ uint8_t cpu6502::CMP(){
     //does a subtraction operation but doesnt update the accumulator
     temp = (uint16_t)accReg - (uint16_t)fetched;
     //sets the carry bit if the accumulator is greater than or equal to the fetched data
-    SetFlag(C, accReg >= fetched);
+    setFlag(C, accReg >= fetched);
     //sets the zero bit if the accumulator is equal to the fetched data
-    SetFlag(Z, (temp & 0x00FF) == 0x0000);
+    setFlag(Z, (temp & 0x00FF) == 0x0000);
     //sets the negative bit if the accumulator is less than the fetched data(the MSB of the low byte is 1)
-    SetFlag(N, temp & 0x0080);
+    setFlag(N, temp & 0x0080);
     return 1;
 }
 
@@ -559,11 +655,11 @@ uint8_t cpu6502::CPX(){
     //does a subtraction operation but doesnt update the accumulator
     temp = (uint16_t)xReg - (uint16_t)fetched;
     //sets the carry bit if the accumulator is greater than or equal to the fetched data
-    SetFlag(C, xReg >= fetched);
+    setFlag(C, xReg >= fetched);
     //sets the zero bit if the accumulator is equal to the fetched data
-    SetFlag(Z, (temp & 0x00FF) == 0x0000);
+    setFlag(Z, (temp & 0x00FF) == 0x0000);
     //sets the negative bit if the accumulator is less than the fetched data(the MSB of the low byte is 1)
-    SetFlag(N, temp & 0x0080);
+    setFlag(N, temp & 0x0080);
     return 0;
 }
 
@@ -575,11 +671,11 @@ uint8_t cpu6502::CPY(){
     //does a subtraction operation but doesnt update the accumulator
     temp = (uint16_t)yReg - (uint16_t)fetched;
     //sets the carry bit if the accumulator is greater than or equal to the fetched data
-    SetFlag(C, yReg >= fetched);
+    setFlag(C, yReg >= fetched);
     //sets the zero bit if the accumulator is equal to the fetched data
-    SetFlag(Z, (temp & 0x00FF) == 0x0000);
+    setFlag(Z, (temp & 0x00FF) == 0x0000);
     //sets the negative bit if the accumulator is less than the fetched data(the MSB of the low byte is 1)
-    SetFlag(N, temp & 0x0080);
+    setFlag(N, temp & 0x0080);
     return 0;
 }
 
@@ -588,24 +684,24 @@ uint8_t cpu6502::DEC(){
     fetch();
     temp = fetched - 1;
     write(addr_abs, temp & 0x00FF);
-    SetFlag(Z, (temp & 0x00FF) == 0x0000);
-    SetFlag(N, temp & 0x0080);
+    setFlag(Z, (temp & 0x00FF) == 0x0000);
+    setFlag(N, temp & 0x0080);
     return 0;
 }
 
 //Decrement X register
 uint8_t cpu6502::DEX(){
     xReg--;
-    SetFlag(Z, x == 0x00);
-    SetFlag(N, x & 0x80);
+    setFlag(Z, x == 0x00);
+    setFlag(N, x & 0x80);
     return 0;
 }
 
 //Decrement Y register
 uint8_t cpu6502::DEY(){
     yReg--;
-    SetFlag(Z, y == 0x00);
-    SetFlag(N, y & 0x80);
+    setFlag(Z, y == 0x00);
+    setFlag(N, y & 0x80);
     return 0;
 }
 
@@ -613,8 +709,8 @@ uint8_t cpu6502::DEY(){
 uint8_t cpu6502::EOR(){
     fetch();
     accReg = accReg ^ fetched;
-    SetFlag(Z, accReg == 0x00);
-    SetFlag(N, accReg & 0x80);
+    setFlag(Z, accReg == 0x00);
+    setFlag(N, accReg & 0x80);
     return 1;
 }
 
@@ -623,24 +719,24 @@ uint8_t cpu6502::INC(){
     fetch();
     temp = fetched + 1;
     write(addr_abs, temp & 0x00FF);
-    SetFlag(Z, (temp & 0x00FF) == 0x0000);
-    SetFlag(N, temp & 0x0080);
+    setFlag(Z, (temp & 0x00FF) == 0x0000);
+    setFlag(N, temp & 0x0080);
     return 0;
 }
 
 //incredment x register
 uint8_t cpu6502::INX(){
     xReg++;
-    SetFlag(Z, x == 0x00);
-    SetFlag(N, x & 0x80);
+    setFlag(Z, x == 0x00);
+    setFlag(N, x & 0x80);
     return 0;
 }
 
 //increment y register  
 uint8_t cpu6502::INY(){
     yReg++;
-    SetFlag(Z, y == 0x00);
-    SetFlag(N, y & 0x80);
+    setFlag(Z, y == 0x00);
+    setFlag(N, y & 0x80);
     return 0;
 }
 
@@ -656,11 +752,11 @@ uint8_t cpu6502::JSR(){
     //puts the pc one instruction before
     pc--;
     //write the high byte of the program counter to the stack
-    write(0x0100 + stkp, (pc >> 8) & 0x00FF);
-    stkp--;
+    write(0x0100 + stckPtr, (pc >> 8) & 0x00FF);
+    stckPtr--;
     //write the low byte of the program conter to the stacks
-    write(0x0100 + stkp, pc & 0x00FF);
-    stkp--;
+    write(0x0100 + stckPtr, pc & 0x00FF);
+    stckPtr--;
 
     //jump to the address stored
     pc = addr_abs;
@@ -671,8 +767,8 @@ uint8_t cpu6502::JSR(){
 uint8_t cpu6502::LDA(){
     fetch();
     accReg = fetched;
-    SetFlag(Z, accReg == 0x00);
-    SetFlag(N, accReg & 0x80);
+    setFlag(Z, accReg == 0x00);
+    setFlag(N, accReg & 0x80);
     return 1;
 }
 
@@ -680,8 +776,8 @@ uint8_t cpu6502::LDA(){
 uint8_t cpu6502::LDX(){
     fetch();
     xReg = fetched;
-    SetFlag(Z, xReg == 0x00);
-    SetFlag(N, xReg & 0x80);
+    setFlag(Z, xReg == 0x00);
+    setFlag(N, xReg & 0x80);
     return 1;
 }
 
@@ -689,8 +785,8 @@ uint8_t cpu6502::LDX(){
 uint8_t cpu6502:LDY(){
     fetch();
     yReg = fetched;
-    SetFlag(Z, yReg == 0x00);
-    SetFlag(N, yReg & 0x80);
+    setFlag(Z, yReg == 0x00);
+    setFlag(N, yReg & 0x80);
     return 1;
 }
 
@@ -698,13 +794,13 @@ uint8_t cpu6502:LDY(){
 uint8_t cpu6502::LSR(){
     fetch();
     //set the bit shifted away to the carry bit
-    SetFlag(C, fetched & 0x0001);
+    setFlag(C, fetched & 0x0001);
     //shift the bits to the right
     temp = fetched >> 1;
     //set the zero flag if the temp is 0
-    SetFlag(Z, (temp & 0x00FF) == 0x0000);
+    setFlag(Z, (temp & 0x00FF) == 0x0000);
     //set the negative flag
-    SetFlag(N, temp & 0x0080);
+    setFlag(N, temp & 0x0080);
     //if we are in an implied mode, set the accumulator to the temp
     if (lookup[opcode].addrmode == &cpu6502::IMP)
         accReg = temp & 0x00FF;
@@ -742,40 +838,40 @@ uint8_t cpu6502::ORA(){
     //OR the accumulator with the fetched data
     accReg = accReg | fetched;
     //sets the zero flag
-    SetFlag(Z, accReg == 0x00);
+    setFlag(Z, accReg == 0x00);
     //sets the negative flag
-    SetFlag(N, accReg & 0x80);
+    setFlag(N, accReg & 0x80);
     return 1;
 }
 
 uint8_t cpu6502::PHA(){
     //pushes the accumulator to the stack
-    write(0x0100 + stkp, accReg);
-    stkp--;
+    write(0x0100 + stckPtr, accReg);
+    stckPtr--;
     return 0;
 }
 
 uint8_t cpu6502::PHP(){
     //pushes the status register to the stack
-    write(0x0100 + stkp, status);
-    stkp--;
+    write(0x0100 + stckPtr, status);
+    stckPtr--;
     return 0;
 }
 
 uint8_t cpu6502::PLA(){
     //pops the accumulator from the stack
-    stkp++;
-    accReg = read(0x0100 + stkp);
-    SetFlag(Z, accReg == 0x00);
-    SetFlag(N, accReg & 0x80);
+    stckPtr++;
+    accReg = read(0x0100 + stckPtr);
+    setFlag(Z, accReg == 0x00);
+    setFlag(N, accReg & 0x80);
     return 0;
 }
 
 uint8_t cpu6502::PLP(){
     //pops the status register from the stack
-    stkp++;
-    status = read(0x0100 + stkp);
-    SetFlag(U, true);
+    stckPtr++;
+    status = read(0x0100 + stckPtr);
+    setFlag(U, true);
     return 0;
 }
 
@@ -783,13 +879,13 @@ uint8_t cpu6502::PLP(){
 uint8_t cpu6502::ROL(){
     fetch();
     //rotate the bits to the left
-    temp = (uint16_t)(fetched << 1) | GetFlag(C);
+    temp = (uint16_t)(fetched << 1) | getFlag(C);
     //sets the carry bit to the MSB
-    SetFlag(C, temp & 0xFF00);
+    setFlag(C, temp & 0xFF00);
     //sets the zero bit
-    SetFlag(Z, (temp & 0x00FF) == 0x0000);
+    setFlag(Z, (temp & 0x00FF) == 0x0000);
     //sets the negative bit
-    SetFlag(N, temp & 0x0080);
+    setFlag(N, temp & 0x0080);
     //if we are in an implied mode, set the accumulator to the temp
     if (lookup[opcode].addrmode == &cpu6502::IMP)
         accReg = temp & 0x00FF;
@@ -803,13 +899,13 @@ uint8_t cpu6502::ROL(){
 uint8_t cpu6502::ROR(){
     fetch();
     //rotate the bits to the right
-    temp = (uint16_t)(GetFlag(C) << 7) | (fetched >> 1);
+    temp = (uint16_t)(getFlag(C) << 7) | (fetched >> 1);
     //sets the carry bit to the LSB
-    SetFlag(C, fetched & 0x01);
+    setFlag(C, fetched & 0x01);
     //sets the zero bit
-    SetFlag(Z, (temp & 0x00FF) == 0x00);
+    setFlag(Z, (temp & 0x00FF) == 0x00);
     //sets the negative bit
-    SetFlag(N, temp & 0x0080);
+    setFlag(N, temp & 0x0080);
     //if we are in an implied mode, set the accumulator to the temp
     if (lookup[opcode].addrmode == &cpu6502::IMP)
         accReg = temp & 0x00FF;
@@ -822,16 +918,16 @@ uint8_t cpu6502::ROR(){
 //RETURN FROM INTERRIPT
 uint8_t cpu6502::RTI(){
     //pops the status register from the stack
-    stkp++;
-    status = read(0x0100 + stkp);
+    stckPtr++;
+    status = read(0x0100 + stckPtr);
     status &= ~B;
 	status &= ~U;
 
     //pops the program counter from the stack
-    stkp++;
-    pc = (uint16_t)read(0x0100 + stkp);
-    stkp++;
-    pc |= (uint16_t)read(0x0100 + stkp) << 8;
+    stckPtr++;
+    pc = (uint16_t)read(0x0100 + stckPtr);
+    stckPtr++;
+    pc |= (uint16_t)read(0x0100 + stckPtr) << 8;
     return 0;
 }
 
@@ -839,11 +935,11 @@ uint8_t cpu6502::RTI(){
 uint8_t cpu6502::RTS(){
     //pops the program counter from the stack
     //low byte
-    stkp++;
-    pc = (uint16_t)read(0x0100 + stkp);
+    stckPtr++;
+    pc = (uint16_t)read(0x0100 + stckPtr);
     //high byte
-    stkp++;
-    pc |= (uint16_t)read(0x0100 + stkp) << 8;
+    stckPtr++;
+    pc |= (uint16_t)read(0x0100 + stckPtr) << 8;
 
     //increments the program counter
     pc++;
@@ -862,11 +958,11 @@ uint8_t cpu6502::SBC()
 	uint16_t value = ((uint16_t)fetched) ^ 0x00FF;
 	
 	// Notice this is exactly the same as addition from here!
-	temp = (uint16_t)a + value + (uint16_t)GetFlag(C);
-	SetFlag(C, temp & 0xFF00);
-	SetFlag(Z, ((temp & 0x00FF) == 0));
-	SetFlag(V, (temp ^ (uint16_t)a) & (temp ^ value) & 0x0080);
-	SetFlag(N, temp & 0x0080);
+	temp = (uint16_t)a + value + (uint16_t)getFlag(C);
+	setFlag(C, temp & 0xFF00);
+	setFlag(Z, ((temp & 0x00FF) == 0));
+	setFlag(V, (temp ^ (uint16_t)a) & (temp ^ value) & 0x0080);
+	setFlag(N, temp & 0x0080);
 	accReg = temp & 0x00FF;
 	return 1;
 }
@@ -874,21 +970,21 @@ uint8_t cpu6502::SBC()
 //set the carry flag
 uint8_t cpu6502::SEC()
 {
-    SetFlag(C, true);
+    setFlag(C, true);
     return 0;
 }
 
 //set decimal mode flag(not even needed in this 6502 implementation)
 uint8_t cpu6502::SED()
 {
-    SetFlag(D, true);
+    setFlag(D, true);
     return 0;
 }
 
 //sets interupt flag
 uint8_t cpu6502::SEI()
 {
-    SetFlag(I, true);
+    setFlag(I, true);
     return 0;
 }
 
@@ -915,45 +1011,183 @@ uint8_t cpu6502::STY(){
 //transfer accumalator to x register
 uint8_t cpu6502::TAX(){
     xReg = accReg;
-    SetFlag(Z, xReg == 0x00);
-    SetFlag(N, xReg & 0x80);
+    setFlag(Z, xReg == 0x00);
+    setFlag(N, xReg & 0x80);
     return 0;
 }
 
 //transfer accumalator to x register
 uint8_t cpu6502::TAY(){
     yReg = accReg;
-    SetFlag(Z, yReg == 0x00);
-    SetFlag(N, yReg & 0x80);
+    setFlag(Z, yReg == 0x00);
+    setFlag(N, yReg & 0x80);
     return 0;
 }
 
 //transfer stack pointer to x register
 uint8_t cpu6502::TSX(){
-    xReg = stkp;
-    SetFlag(Z, xReg == 0x00);
-    SetFlag(N, xReg & 0x80);
+    xReg = stckPtr;
+    setFlag(Z, xReg == 0x00);
+    setFlag(N, xReg & 0x80);
     return 0;
 }
 
 //transfer x register to accumalator
 uint8_t cpu6502::TXA(){
     accReg = xReg;
-    SetFlag(Z, accReg == 0x00);
-    SetFlag(N, accReg & 0x80);
+    setFlag(Z, accReg == 0x00);
+    setFlag(N, accReg & 0x80);
     return 0;
 }
 
 //transfer x register to stack pointer
 uint8_t cpu6502::TXS(){
-    stkp = xReg;
+    stckPtr = xReg;
     return 0;
 }
 
 //transfer y register to accumalator
 uint8_t cpu6502::TYA(){
     accReg = yReg;
-    SetFlag(Z, accReg == 0x00);
-    SetFlag(N, accReg & 0x80);
+    setFlag(Z, accReg == 0x00);
+    setFlag(N, accReg & 0x80);
     return 0;
+}
+
+//capture the illegal opcodes
+uint8_t cpu6502::XXX(){
+    return 0;
+}
+
+
+///HELPER FUNCTIONS FOR TESTING
+bool cpu6502::complete()
+{
+	return cycles == 0;
+}
+
+
+// This is the disassembly function. Its workings are not required for emulation.
+// It is merely a convenience function to turn the binary instruction code into
+// human readable form. Its included as part of the emulator because it can take
+// advantage of many of the CPUs internal operations to do this.
+std::map<uint16_t, std::string> cpu6502::disassemble(uint16_t nStart, uint16_t nStop)
+{
+	uint32_t addr = nStart;
+	uint8_t value = 0x00, lo = 0x00, hi = 0x00;
+	std::map<uint16_t, std::string> mapLines;
+	uint16_t line_addr = 0;
+
+	// A convenient utility to convert variables into
+	// hex strings because "modern C++"'s method with 
+	// streams is atrocious
+	auto hex = [](uint32_t n, uint8_t d)
+	{
+		std::string s(d, '0');
+		for (int i = d - 1; i >= 0; i--, n >>= 4)
+			s[i] = "0123456789ABCDEF"[n & 0xF];
+		return s;
+	};
+
+	// Starting at the specified address we read an instruction
+	// byte, which in turn yields information from the lookup table
+	// as to how many additional bytes we need to read and what the
+	// addressing mode is. I need this info to assemble human readable
+	// syntax, which is different depending upon the addressing mode
+
+	// As the instruction is decoded, a std::string is assembled
+	// with the readable output
+	while (addr <= (uint32_t)nStop)
+	{
+		line_addr = addr;
+
+		// Prefix line with instruction address
+		std::string sInst = "$" + hex(addr, 4) + ": ";
+
+		// Read instruction, and get its readable name
+		uint8_t opcode = bus->read(addr, true); addr++;
+		sInst += lookup[opcode].name + " ";
+
+		// Get oprands from desired locations, and form the
+		// instruction based upon its addressing mode. These
+		// routines mimmick the actual fetch routine of the
+		// 6502 in order to get accurate data as part of the
+		// instruction
+		if (lookup[opcode].addrmode == &olc6502::IMP)
+		{
+			sInst += " {IMP}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::IMM)
+		{
+			value = bus->read(addr, true); addr++;
+			sInst += "#$" + hex(value, 2) + " {IMM}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::ZP0)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = 0x00;												
+			sInst += "$" + hex(lo, 2) + " {ZP0}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::ZPX)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = 0x00;														
+			sInst += "$" + hex(lo, 2) + ", X {ZPX}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::ZPY)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = 0x00;														
+			sInst += "$" + hex(lo, 2) + ", Y {ZPY}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::IZX)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = 0x00;								
+			sInst += "($" + hex(lo, 2) + ", X) {IZX}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::IZY)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = 0x00;								
+			sInst += "($" + hex(lo, 2) + "), Y {IZY}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::ABS)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = bus->read(addr, true); addr++;
+			sInst += "$" + hex((uint16_t)(hi << 8) | lo, 4) + " {ABS}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::ABX)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = bus->read(addr, true); addr++;
+			sInst += "$" + hex((uint16_t)(hi << 8) | lo, 4) + ", X {ABX}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::ABY)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = bus->read(addr, true); addr++;
+			sInst += "$" + hex((uint16_t)(hi << 8) | lo, 4) + ", Y {ABY}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::IND)
+		{
+			lo = bus->read(addr, true); addr++;
+			hi = bus->read(addr, true); addr++;
+			sInst += "($" + hex((uint16_t)(hi << 8) | lo, 4) + ") {IND}";
+		}
+		else if (lookup[opcode].addrmode == &olc6502::REL)
+		{
+			value = bus->read(addr, true); addr++;
+			sInst += "$" + hex(value, 2) + " [$" + hex(addr + value, 4) + "] {REL}";
+		}
+
+		// Add the formed string to a std::map, using the instruction's
+		// address as the key. This makes it convenient to look for later
+		// as the instructions are variable in length, so a straight up
+		// incremental index is not sufficient.
+		mapLines[line_addr] = sInst;
+	}
+
+	return mapLines;
 }
