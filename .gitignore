@@ -12,4 +12,9 @@
 # Ignore all local history of files
 **/.history
 
+### Testing files ###
+olcPixelGameEngine.h
+olcNes_Video1_6502.cpp
+olcPGEMac/*
+
 # End of https://www.gitignore.io/api/visualstudiocode

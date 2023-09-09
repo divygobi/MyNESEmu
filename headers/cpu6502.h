@@ -1,5 +1,11 @@
 #pragma once
-#include <bus.h>
+#include "bus.h"
+#include <vector>
+
+// These are required for disassembler. If you dont require disassembly
+// then just remove the function.
+#include <string>
+#include <map>
 
 class Bus;
 
@@ -10,9 +16,10 @@ public:
     cpu6502();
     ~cpu6502();
 
-    void connectBus(Bus *b){bus = b; }
+    void connectBus(Bus *b){bus = b; };
 
-public:
+	std::map<uint16_t, std::string> disassemble(uint16_t nStart, uint16_t nStop);
+
 	// These are the 6502 CPU registers
     uint8_t accReg = 0x00; //accumalator register
     uint8_t xReg = 0x00; //X register
@@ -42,13 +49,12 @@ public:
 	void reset();   // reset the cpu to a known state
 	void irq();     // interrupt request signal
 	void nmi();     // non-maskable interrupt request signal
-};
+
 
 //any devices the cpu is connected to
 private:
-    Bus *bus = nullptr;
+    Bus* bus = nullptr;
 
-private: 
 	// Addressing Modes =============================================
 	// The 6502 has a variety of addressing modes to access data in 
 	// memory, some of which are direct and some are indirect (like
@@ -72,7 +78,6 @@ private:
 	uint8_t ABY();	uint8_t IND();	
 	uint8_t IZX();	uint8_t IZY();
 
-private: 
 	// Opcodes ======================================================
 	// There are 56 "legitimate" opcodes provided by the 6502 CPU. I
 	// have not modelled "unofficial" opcodes. As each opcode is 
@@ -123,7 +128,6 @@ private:
 	uint8_t cycles = 0; // number of cycles the instruction has remaining
     
 
-private:
     uint8_t read(uint16_t addy);
     void write(uint16_t addy, uint8_t data);
 
@@ -141,3 +145,4 @@ private:
 	std::vector<INSTRUCTION> lookup;
 	
 
+};
