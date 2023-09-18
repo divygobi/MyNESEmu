@@ -1,5 +1,4 @@
 #pragma once
-#include "bus.h"
 #include <vector>
 
 // These are required for disassembler. If you dont require disassembly
@@ -16,6 +15,9 @@ public:
     cpu6502();
     ~cpu6502();
 
+ 
+    //indicates when an instructions has returned and finished, enables step by step execution, removes the need to manually clock evry cycle
+    bool complete();
     void connectBus(Bus *b){bus = b; };
 
 	std::map<uint16_t, std::string> disassemble(uint16_t nStart, uint16_t nStop);

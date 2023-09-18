@@ -7,10 +7,10 @@
 
 #include "mapper_000.h"
 
-class cartridge{
+class Cartridge{
     public:
-        cartridge(const std::string& sFileName);
-        ~cartridge();
+        Cartridge(const std::string& sFileName);
+        ~Cartridge();
         bool ImageValid();
 
         enum MIRROR
@@ -39,4 +39,4 @@ class cartridge{
         //communications with the ppu bus
         bool ppuWrite(uint16_t addy, uint8_t data);
         bool ppuRead(uint16_t addy, uint8_t data);
-}
+};

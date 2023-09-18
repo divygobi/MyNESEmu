@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <memory>
 
-#include "olcPixelGameEngine.h"
+//#include "olcPixelGameEngine.h"
 
 #include "cartridge.h"
 
@@ -35,4 +35,4 @@ class ppu2C02{
         //pattern memory(exists on the cartridge usually)
         uint8_t     tblPattern[2][4096]; // 2 4kb tables, could eventually be scaled into running games with more capabilities
         uint8_t		tblPalette[32];
-}
+};

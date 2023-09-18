@@ -2,7 +2,7 @@
 #include "Mapper.h"
 
 
-class mapper_000 : public mapper
+class mapper_000 : public Mapper
 {
 public:
 	mapper_000(uint8_t prgBanks, uint8_t chrBanks);

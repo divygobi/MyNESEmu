@@ -19,7 +19,7 @@ public:
     std::shared_ptr<Cartridge> cart;
 
     // dummy 64 kilobyte ram
-    std::array<u_int8_t, 1024> cpuRam;
+    std::array<uint8_t, 1024> cpuRam;
 
 public:
     // Read and write for bus

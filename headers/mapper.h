@@ -1,10 +1,10 @@
 #pragma once
 #include <cstdint>
 
-class mapper{
+class Mapper{
     public: 
-        mapper(uint8_t prgBanks, uint8_t chrBanks);
-        ~mapper();
+        Mapper(uint8_t prgBanks, uint8_t chrBanks);
+        ~Mapper();
 
         // Transform CPU bus address into PRG ROM offset
         virtual bool cpuMapRead(uint16_t addr, uint32_t &mapped_addr)	 = 0;
@@ -17,4 +17,4 @@ class mapper{
         uint8_t nPRGBanks = 0;
         uint8_t nCHRBanks = 0;
 
-}
+};

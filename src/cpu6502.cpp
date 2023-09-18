@@ -37,6 +37,10 @@ cpu6502::cpu6502()
 }
 ~cpu6502();
 
+bool complete(){
+     return cycles == 0
+}
+
 uint8_t read(uint16_t addy){
     return bus->cpuRead(addy, false);
 }
