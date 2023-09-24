@@ -1,9 +1,9 @@
-#include "cartridge.h"
+#include "../headers/cartridge.h"
 
-#
+
 
  //constructor
-cartridge::cartridge(const std::string& sFileName)
+Cartridge::Cartridge(const std::string& sFileName)
 {
     //iNES format header
    struct sHeader{
@@ -19,11 +19,11 @@ cartridge::cartridge(const std::string& sFileName)
    } header;
 
     //open the file
-    std: ifstream ifs;
+    std::ifstream ifs;
     ifs.open(sFileName, std::ifstream::binary);
 
     if (ifs.is_open()){
-        //read file header in 
+        //read file header in
         ifs.read((char*)&header, sizeof(sHeader));
     }
 
@@ -31,7 +31,7 @@ cartridge::cartridge(const std::string& sFileName)
         ifs.seekg(512, std::ios_base::cur);
     }
 
-    nMapperId = ((header.mapper2 >> 4) << 4) | (header.mapper1 >> 4);
+    nMapperID = ((header.mapper2 >> 4) << 4) | (header.mapper1 >> 4);
 
     //Discover the file format
     uint8_t nFileType = 1;
@@ -56,20 +56,21 @@ cartridge::cartridge(const std::string& sFileName)
 
     }
 
+    //using polymorphism
     switch(nMapperID){
         case 0: pMapper = std::make_shared<mapper_000>(nPRGBanks, nCHRBanks); break;
     }
 
-    ifs.close()
-   
+    ifs.close();
+
 }
 
-cartridge::~cartridge()
+Cartridge::~Cartridge()
 {
     //destructor
 }
 
-bool cartridge::cpuRead(uint16_t addy, uint8_t & data)
+bool Cartridge::cpuRead(uint16_t addy, uint8_t & data)
 {
     uint32_t mapped_addr = 0;
     if (pMapper->cpuMapRead(addy, mapped_addr)){
@@ -82,7 +83,7 @@ bool cartridge::cpuRead(uint16_t addy, uint8_t & data)
 }
 
 
-bool cartridge::cpuWrite(uint16_t addr, uint8_t data)
+bool Cartridge::cpuWrite(uint16_t addr, uint8_t data)
 {
 	uint32_t mapped_addr = 0;
 	if (pMapper->cpuMapWrite(addr, mapped_addr))
@@ -94,7 +95,7 @@ bool cartridge::cpuWrite(uint16_t addr, uint8_t data)
 		return false;
 }
 
-bool cartridge::ppuRead(uint16_t addr, uint8_t & data)
+bool Cartridge::ppuRead(uint16_t addr, uint8_t & data)
 {
 	uint32_t mapped_addr = 0;
 	if (pMapper->ppuMapRead(addr, mapped_addr))
@@ -106,7 +107,7 @@ bool cartridge::ppuRead(uint16_t addr, uint8_t & data)
 		return false;
 }
 
-bool cartridge::ppuWrite(uint16_t addr, uint8_t data)
+bool Cartridge::ppuWrite(uint16_t addr, uint8_t data)
 {
 	uint32_t mapped_addr = 0;
 	if (pMapper->ppuMapRead(addr, mapped_addr))

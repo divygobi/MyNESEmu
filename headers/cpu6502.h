@@ -5,6 +5,7 @@
 // then just remove the function.
 #include <string>
 #include <map>
+#include <cstdint>
 
 class Bus;
 
@@ -15,7 +16,7 @@ public:
     cpu6502();
     ~cpu6502();
 
- 
+
     //indicates when an instructions has returned and finished, enables step by step execution, removes the need to manually clock evry cycle
     bool complete();
     void connectBus(Bus *b){bus = b; };
@@ -31,7 +32,7 @@ public:
     uint8_t statusReg = 0x00; //status register (8-bit)
 
 	// enumeration of the bits of the status register. 6502 is an 8-bit architecture
-    enum FLAGS6502		
+    enum FLAGS6502
 						// status registers reflects the results of each instruction executed and general state of the CPU
 	{
         C = (1 << 0), // carry bit: the carry or borrow from the most significant bit during arithmetic operations
@@ -43,11 +44,11 @@ public:
         V = (1 << 6), // overflow: when processor uses signed variables
         N = (1 << 7), // negative: when processor uses signed variables
     };
-    
+
 	// Event Functions (asserts change in state)
 	void clock();	// indicates to cpu that we want 1 clock cycle to occur
 
-	// These functions will let CPU finish instruction before running 
+	// These functions will let CPU finish instruction before running
 	void reset();   // reset the cpu to a known state
 	void irq();     // interrupt request signal
 	void nmi();     // non-maskable interrupt request signal
@@ -58,10 +59,10 @@ private:
     Bus* bus = nullptr;
 
 	// Addressing Modes =============================================
-	// The 6502 has a variety of addressing modes to access data in 
+	// The 6502 has a variety of addressing modes to access data in
 	// memory, some of which are direct and some are indirect (like
 	// pointers in C++). Each opcode contains information about which
-	// addressing mode should be employed to facilitate the 
+	// addressing mode should be employed to facilitate the
 	// instruction, in regards to where it reads/writes the data it
 	// uses. The address mode changes the number of bytes that
 	// makes up the full instruction, so we implement addressing
@@ -73,32 +74,32 @@ private:
 	// and how the memory is accessed, so they return the required
 	// adjustment.
 
-	uint8_t IMP();	uint8_t IMM();	
-	uint8_t ZP0();	uint8_t ZPX();	
+	uint8_t IMP();	uint8_t IMM();
+	uint8_t ZP0();	uint8_t ZPX();
 	uint8_t ZPY();	uint8_t REL();
-	uint8_t ABS();	uint8_t ABX();	
-	uint8_t ABY();	uint8_t IND();	
+	uint8_t ABS();	uint8_t ABX();
+	uint8_t ABY();	uint8_t IND();
 	uint8_t IZX();	uint8_t IZY();
 
 	// Opcodes ======================================================
 	// There are 56 "legitimate" opcodes provided by the 6502 CPU. I
-	// have not modelled "unofficial" opcodes. As each opcode is 
+	// have not modelled "unofficial" opcodes. As each opcode is
 	// defined by 1 byte, there are potentially 256 possible codes.
 	// Codes are not used in a "switch case" style on a processor,
 	// instead they are repsonisble for switching individual parts of
-	// CPU circuits on and off. The opcodes listed here are official, 
+	// CPU circuits on and off. The opcodes listed here are official,
 	// meaning that the functionality of the chip when provided with
 	// these codes is as the developers intended it to be. Unofficial
-	// codes will of course also influence the CPU circuitry in 
+	// codes will of course also influence the CPU circuitry in
 	// interesting ways, and can be exploited to gain additional
 	// functionality!
 	//
 	// These functions return 0 normally, but some are capable of
 	// requiring more clock cycles when executed under certain
-	// conditions combined with certain addressing modes. If that is 
+	// conditions combined with certain addressing modes. If that is
 	// the case, they return 1.
 	//
-	// I have included detailed explanations of each function in 
+	// I have included detailed explanations of each function in
 	// the class implementation file. Note they are listed in
 	// alphabetical order here for ease of finding.
 
@@ -128,7 +129,7 @@ private:
 	uint16_t addr_rel = 0x0000; // relative address. in 6502, branch can only jump certain distance from current location which is why we need relative addr
 	uint8_t opcode = 0x00; // current opcode
 	uint8_t cycles = 0; // number of cycles the instruction has remaining
-    
+    uint16_t temp = 0x0000;
 
     uint8_t read(uint16_t addy);
     void write(uint16_t addy, uint8_t data);
@@ -145,6 +146,6 @@ private:
 	};
 
 	std::vector<INSTRUCTION> lookup;
-	
+
 
 };

@@ -1,4 +1,5 @@
 #include "../headers/cpu6502.h"
+#include "../headers/bus.h"
 #include <map>
 
 cpu6502::cpu6502()
@@ -6,7 +7,7 @@ cpu6502::cpu6502()
 	// Assembles the translation table. It's big, it's ugly, but it yields a convenient way
 	// to emulate the 6502. I'm certain there are some "code-golf" strategies to reduce this
 	// but I've deliberately kept it verbose for study and alteration
-	
+
 	// It is 16x16 entries. This gives 256 instructions. It is arranged to that the bottom
 	// 4 bits of the instruction choose the column, and the top 4 bits choose the row.
 
@@ -15,7 +16,7 @@ cpu6502::cpu6502()
 
 	// The table is one big initialiser list of initialiser lists...
 	using a = cpu6502;
-	lookup = 
+	lookup =
 	{
 		{ "BRK", &a::BRK, &a::IMM, 7 },{ "ORA", &a::ORA, &a::IZX, 6 },{ "???", &a::XXX, &a::IMP, 2 },{ "???", &a::XXX, &a::IMP, 8 },{ "???", &a::NOP, &a::IMP, 3 },{ "ORA", &a::ORA, &a::ZP0, 3 },{ "ASL", &a::ASL, &a::ZP0, 5 },{ "???", &a::XXX, &a::IMP, 5 },{ "PHP", &a::PHP, &a::IMP, 3 },{ "ORA", &a::ORA, &a::IMM, 2 },{ "ASL", &a::ASL, &a::IMP, 2 },{ "???", &a::XXX, &a::IMP, 2 },{ "???", &a::NOP, &a::IMP, 4 },{ "ORA", &a::ORA, &a::ABS, 4 },{ "ASL", &a::ASL, &a::ABS, 6 },{ "???", &a::XXX, &a::IMP, 6 },
 		{ "BPL", &a::BPL, &a::REL, 2 },{ "ORA", &a::ORA, &a::IZY, 5 },{ "???", &a::XXX, &a::IMP, 2 },{ "???", &a::XXX, &a::IMP, 8 },{ "???", &a::NOP, &a::IMP, 4 },{ "ORA", &a::ORA, &a::ZPX, 4 },{ "ASL", &a::ASL, &a::ZPX, 6 },{ "???", &a::XXX, &a::IMP, 6 },{ "CLC", &a::CLC, &a::IMP, 2 },{ "ORA", &a::ORA, &a::ABY, 4 },{ "???", &a::NOP, &a::IMP, 2 },{ "???", &a::XXX, &a::IMP, 7 },{ "???", &a::NOP, &a::IMP, 4 },{ "ORA", &a::ORA, &a::ABX, 4 },{ "ASL", &a::ASL, &a::ABX, 7 },{ "???", &a::XXX, &a::IMP, 7 },
@@ -35,13 +36,15 @@ cpu6502::cpu6502()
 		{ "BEQ", &a::BEQ, &a::REL, 2 },{ "SBC", &a::SBC, &a::IZY, 5 },{ "???", &a::XXX, &a::IMP, 2 },{ "???", &a::XXX, &a::IMP, 8 },{ "???", &a::NOP, &a::IMP, 4 },{ "SBC", &a::SBC, &a::ZPX, 4 },{ "INC", &a::INC, &a::ZPX, 6 },{ "???", &a::XXX, &a::IMP, 6 },{ "SED", &a::SED, &a::IMP, 2 },{ "SBC", &a::SBC, &a::ABY, 4 },{ "NOP", &a::NOP, &a::IMP, 2 },{ "???", &a::XXX, &a::IMP, 7 },{ "???", &a::NOP, &a::IMP, 4 },{ "SBC", &a::SBC, &a::ABX, 4 },{ "INC", &a::INC, &a::ABX, 7 },{ "???", &a::XXX, &a::IMP, 7 },
 	};
 }
-~cpu6502();
 
-bool complete(){
-     return cycles == 0
+cpu6502::~cpu6502(){
 }
 
-uint8_t read(uint16_t addy){
+bool cpu6502::complete(){
+     return cycles == 0;
+}
+
+uint8_t cpu6502::read(uint16_t addy){
     return bus->cpuRead(addy, false);
 }
 
@@ -56,20 +59,19 @@ void cpu6502::clock()
 
 	if (cycles == 0)
     {
-		opcode = read(pc);
-		pc++;
+		opcode = read(prgrmCtnr);
+		prgrmCtnr++;
 
 		// get starting number of cycles
-		opcodeVal = lookup[opcode];
-        cycles = opcodeVal.cycles;
+        cycles = lookup[opcode].cycles;
 
-        uint8_t addional_cycle1 = (this-> *opcodeVal.addrmode)(); // call the function required for the address mode. returns either 0 or 1 cycles. Max 3 cycles
-        uint8_t addional_cycle2 = (this-> *opcodeVal.operate)(); // call the function required for the run the instruction. returns either 0 or 1 cycles
+        uint8_t addional_cycle1 = (this->*lookup[opcode].addrmode)(); // call the function required for the address mode. returns either 0 or 1 cycles. Max 3 cycles
+        uint8_t addional_cycle2 = (this->*lookup[opcode].operate)(); // call the function required for the run the instruction. returns either 0 or 1 cycles
 
         cycles += (addional_cycle1 & addional_cycle2);
 
 	}
-    cycles--;   // executing instruction at one point in time, meaning one tick has passed 
+    cycles--;   // executing instruction at one point in time, meaning one tick has passed
 }
 
 
@@ -80,7 +82,7 @@ void cpu6502::reset(){
     xReg = 0;
     yReg = 0;
     stckPtr = 0xFD;
-    status = 0x00 | U;
+    statusReg = 0x00 | U;
 
     //set the PC to FFFC
     addr_abs = 0xFFFC;
@@ -88,7 +90,7 @@ void cpu6502::reset(){
 	uint16_t hi = read(addr_abs + 1);
 
 	// Set it
-	pc = (hi << 8) | lo;
+	prgrmCtnr = (hi << 8) | lo;
 
     // Clear internal helper variables
 	addr_rel = 0x0000;
@@ -101,13 +103,13 @@ void cpu6502::reset(){
 
 // Interrupt requests are a complex operation and only happen if the
 // "disable interrupt" flag is 0. IRQs can happen at any time, but
-// you dont want them to be destructive to the operation of the running 
+// you dont want them to be destructive to the operation of the running
 // program. Therefore the current instruction is allowed to finish
-// (which I facilitate by doing the whole thing when cycles == 0) and 
+// (which I facilitate by doing the whole thing when cycles == 0) and
 // then the current program counter is stored on the stack. Then the
 // current status register is stored on the stack. When the routine
 // that services the interrupt has finished, the status register
-// and program counter can be restored to how they where before it 
+// and program counter can be restored to how they where before it
 // occurred. This is impemented by the "RTI" instruction. Once the IRQ
 // has happened, in a similar way to a reset, a programmable address
 // is read form hard coded location 0xFFFE, which is subsequently
@@ -115,23 +117,23 @@ void cpu6502::reset(){
 void cpu6502::irq(){
     if(getFlag(I) == 0){
         //push the program counter to the stack
-        write(0x0100 + stckPtr, (pc >> 8) & 0x00FF);
+        write(0x0100 + stckPtr, (prgrmCtnr >> 8) & 0x00FF);
         stckPtr--;
-        write(0x0100 + stckPtr, pc & 0x00FF);
+        write(0x0100 + stckPtr, prgrmCtnr & 0x00FF);
         stckPtr--;
 
         //push the status register to the stack
         setFlag(B, 0);
         setFlag(U, 1);
         setFlag(I, 1);
-        write(0x0100 + stckPtr, status);
+        write(0x0100 + stckPtr, statusReg);
         stckPtr--;
 
         //set the program counter to the address at FFFA
         addr_abs = 0xFFFE;
         uint16_t lo = read(addr_abs + 0);
         uint16_t hi = read(addr_abs + 1);
-        pc = (hi << 8) | lo;
+        prgrmCtnr = (hi << 8) | lo;
 
         //IRQ takes time
         cycles = 7;
@@ -143,23 +145,23 @@ void cpu6502::irq(){
 // form location 0xFFFA
 void cpu6502::nmi(){
     //push the program counter to the stack
-    write(0x0100 + stckPtr, (pc >> 8) & 0x00FF);
+    write(0x0100 + stckPtr, (prgrmCtnr >> 8) & 0x00FF);
     stckPtr--;
-    write(0x0100 + stckPtr, pc & 0x00FF);
+    write(0x0100 + stckPtr, prgrmCtnr & 0x00FF);
     stckPtr--;
 
     //push the status register to the stack
     setFlag(B, 0);
     setFlag(U, 1);
     setFlag(I, 1);
-    write(0x0100 + stckPtr, status);
+    write(0x0100 + stckPtr, statusReg);
     stckPtr--;
 
     //set the program counter to the address at FFFA
     addr_abs = 0xFFFA;
     uint16_t lo = read(addr_abs + 0);
     uint16_t hi = read(addr_abs + 1);
-    pc = (hi << 8) | lo;
+    prgrmCtnr = (hi << 8) | lo;
 
     //IRQ takes time
     cycles = 8;
@@ -171,79 +173,79 @@ void cpu6502::nmi(){
 uint8_t cpu6502::getFlag(FLAGS6502 f)
 {
 
-    return ((status & f) > 0) ? 1 : 0;
+    return ((statusReg & f) > 0) ? 1 : 0;
 }
 
-uint8_t cpu6502::setFlag(FLAGS6502 f, bool v)
+void cpu6502::setFlag(FLAGS6502 f, bool v)
 {
     if (v)
-        status |= f;
+        statusReg |= f;
     else
-        status &= ~f;
+        statusReg &= ~f;
 }
 
 
 // Addressing Modes IMPLEMENTATIONS. It calculates whether or not we need an additional clock cycle (return 1) or not (return 0)
 /*
     There is a need for an additional clock cycle when accessing another page in memory due to the complexity of memory management.
-    Accessing another page if there is an overflow requires more memory access time and thus an additional clock cycle. 
-    Page overflow happens when 
+    Accessing another page if there is an overflow requires more memory access time and thus an additional clock cycle.
+    Page overflow happens when
 */
 uint8_t cpu6502::IMP()     // implied and no data is part of instruction
 {
-	/*incoming data variable(fetched is set to accReg), 
+	/*incoming data variable(fetched is set to accReg),
 	the Implied addressing mode implies that the accumulator is the target or source of the operation */
-	
+
 	fetched = accReg;
 	return 0;
 }
 
-uint8_t cpu6502::uint8_t IMM()     // data will be next byte
+uint8_t cpu6502::IMM()     // data will be next byte
 {
-	/* does not need an extra clock cycle to read in data, 
+	/* does not need an extra clock cycle to read in data,
 	so when the operation is made,
 	it uses this absolute address which is the next byte after the the opcode */
 
-	addr_abs = pc++;
+	addr_abs = prgrmCtnr++;
     return 0;
-} 
+}
 
-uint8_t cpu6502::uint8_t ZP0()     // pages organizes memory
-{   
+uint8_t cpu6502::ZP0()     // pages organizes memory
+{
 	//GET THE BYTE IN THE PAGE FROM THE NEXT BYTE IN THE PC
-    addr_abs = read(pc);
+    addr_abs = read(prgrmCtnr);
 	//INCREMENT PC to get to the next instruction
-    pc++;
-	
+    prgrmCtnr++;
+
 	//setting the address to the 0th page anded with the relative address provided in the next byte
-    addr_abs & 0x00FF;
-    return 0;
-} 
-
-uint8_t cpu6502::ZPX()     // zero page addressing with x register offset
-{   
-	addr_abs = (read(pc) + x);
-    pc++;
-    addr_abs & 0x00FF;
-    return 0;
-} 
-
-uint8_t cpu6502::ZPY()     // zero page addressing with y register offset
-{   
-    addr_abs = (read(pc) + y);
-    pc++;
     addr_abs & 0x00FF;
     return 0;
 }
 
-uint8_t cpu6502::ABS()     // absolute addressing. to get full and true address, THE HIGH BIT IS THE PAGE, 
-{   
+uint8_t cpu6502::ZPX()     // zero page addressing with x register offset
+{
+	addr_abs = (read(prgrmCtnr) + xReg);
+    prgrmCtnr++;
+    addr_abs & 0x00FF;
+    return 0;
+}
 
-	// byte address 
-    uint16_t lo = read(pc);
-    pc++;
-    uint16_t hi = read(pc);
-    pc++;
+uint8_t cpu6502::ZPY()     // zero page addressing with y register offset
+{
+    addr_abs = (read(prgrmCtnr) + yReg);
+    prgrmCtnr++;
+    addr_abs & 0x00FF;
+    return 0;
+}
+
+uint8_t cpu6502::ABS()     // absolute addressing. to get full and true address, THE HIGH BIT IS THE PAGE,
+{
+
+	// byte address
+    uint16_t lo = read(prgrmCtnr);
+    prgrmCtnr++;
+    uint16_t hi = read(prgrmCtnr);
+    prgrmCtnr++;
 
     addr_abs = (hi << 8) | lo;      // makes 16 byte address word
     return 0;
@@ -253,45 +255,45 @@ uint8_t cpu6502::ABS()     // absolute addressing. to get full and true address,
 //TODO UNDERSTAND THIS LATER vvvvv
 
 uint8_t cpu6502::ABX()  {
-	// byte address 
-    uint16_t lo = read(pc);
-    pc++;
-    uint16_t hi = read(pc);
-    pc++;
+	// byte address
+    uint16_t lo = read(prgrmCtnr);
+    prgrmCtnr++;
+    uint16_t hi = read(prgrmCtnr);
+    prgrmCtnr++;
 
     addr_abs = (hi << 8) | lo;      // makes 16 byte address word
-	addr_abs +=x; 
+	addr_abs +=xReg;
 
 	if ((addr_abs & 0xFF00) != (hi << 8))
         return 1;
-    else:
-        return 0
+    else
+        return 0;
 }
 
 //TODO UNDERSTAND THIS LATER vvvvv
 
 uint8_t cpu6502::ABY()     // absolute addressing with y register offset
-{   
-    uint16_t lo = read(pc);
-    pc++;
-    uint16_t hi = read(pc);
-    pc++;
+{
+    uint16_t lo = read(prgrmCtnr);
+    prgrmCtnr++;
+    uint16_t hi = read(prgrmCtnr);
+    prgrmCtnr++;
 
     addr_abs = (hi << 8) | lo;      // makes 16 byte address word
-    addr_abs += y;
+    addr_abs += yReg;
 
     if ((addr_abs & 0xFF00) != (hi << 8))       // corrects the overflow
         return 1;
-    else:
-        return 0
+    else
+        return 0;
 }
 
 uint8_t cpu6502::IND()     // indirect addressing. 6502's way to implement pointers
-{   
-    uint16_t ptr_lo = read(pc);
-    pc++;
-    uint16_t ptr_hi = read(pc);
-    pc++;
+{
+    uint16_t ptr_lo = read(prgrmCtnr);
+    prgrmCtnr++;
+    uint16_t ptr_hi = read(prgrmCtnr);
+    prgrmCtnr++;
 
     //ptr to the address we want
     uint16_t ptr = (ptr_hi << 8) | ptr_lo;
@@ -310,41 +312,41 @@ uint8_t cpu6502::IND()     // indirect addressing. 6502's way to implement point
 }
 
 uint8_t cpu6502::IZX()     // indirect addressing with x register offset
-{   
-    uint16_t t = read(pc);
-    pc++;
+{
+    uint16_t t = read(prgrmCtnr);
+    prgrmCtnr++;
 
-    uint16_t lo = read((uint16_t)(t + (uint16_t)x) & 0x00FF);
-    uint16_t hi = read((uint16_t)(t + (uint16_t)x + 1) & 0x00FF);
+    uint16_t lo = read((uint16_t)(t + (uint16_t)xReg) & 0x00FF);
+    uint16_t hi = read((uint16_t)(t + (uint16_t)xReg + 1) & 0x00FF);
 
     addr_abs = (hi << 8) | lo;
     return 0;
 }
 
 uint8_t cpu6502::IZY()     // indirect addressing with y register offset
-{   
-    uint16_t t = read(pc);
-    pc++;
+{
+    uint16_t t = read(prgrmCtnr);
+    prgrmCtnr++;
 
     uint16_t lo = read(t & 0x00FF);
     uint16_t hi = read((t + 1) & 0x00FF);
 
     addr_abs = (hi << 8) | lo;
-    addr_abs += y;
+    addr_abs += yReg;
 
     if ((addr_abs & 0xFF00) != (hi << 8))       // corrects the overflow
         return 1;
-    else:
+    else
         return 0;
 }
 
 //only applies to branching instruction
 //cant jump any further any that 127 memory locations
 uint8_t cpu6502::REL(){
-    addr_rel = read(pc);
-    pc++;
+    addr_rel = read(prgrmCtnr);
+    prgrmCtnr++;
     //IF the first bit is 1 in the relative address its a negative sign.
-    //We then or it with all 1s at the start so the pointer arthimatic will make sense 
+    //We then or it with all 1s at the start so the pointer arthimatic will make sense
     if(addr_rel & 0x80){
         addr_rel |= 0xFF00;
     }
@@ -354,7 +356,7 @@ uint8_t cpu6502::REL(){
 uint8_t cpu6502::fetch(){
     //IF the addressing mode is not implied, we need to fetch the data from the absolute adress
     //if it is implied, recall that the fetched data lies in the accumulator register
-    if (!(lookup[opcode].addrmode == &olc6502::IMP))
+    if (!(lookup[opcode].addrmode == &cpu6502::IMP))
         //We get the data from the absolute address which was set in the respective addressing mode function
 		fetched = read(addr_abs);
 	return fetched;
@@ -365,7 +367,7 @@ uint8_t cpu6502::fetch(){
 
 
 //ANDS THE ACCUMULATOR WITH FETCHED DATA
-u_int8_t cpu6502::AND(){
+uint8_t cpu6502::AND(){
     fetch();
     accReg = accReg & fetched;
     //set the zero flag if the ACCUMULTOR is 0
@@ -384,26 +386,26 @@ u_int8_t cpu6502::AND(){
 uint8_t cpu6502::ADC(){
     // Grab the data that we are adding to the accumulator(sets fetched)
 	fetch();
-	
+
 	// Add is performed in 16-bit domain for emulation to capture any
 	// carry bit, which will exist in bit 8 of the 16-bit word
-	temp = (uint16_t)a + (uint16_t)fetched + (uint16_t)getFlag(C);
-	
+	temp = (uint16_t)accReg + (uint16_t)fetched + (uint16_t)getFlag(C);
+
 	// The carry flag out exists in the high byte bit 0
 	setFlag(C, temp > 255);
-	
+
 	// The Zero flag is set if the result is 0
 	setFlag(Z, (temp & 0x00FF) == 0);
-	
+
 	// The signed Overflow flag is set based on all that up there! :D
-	setFlag(V, (~((uint16_t)a ^ (uint16_t)fetched) & ((uint16_t)a ^ (uint16_t)temp)) & 0x0080);
-	
+	setFlag(V, (~((uint16_t)accReg ^ (uint16_t)fetched) & ((uint16_t)accReg ^ (uint16_t)temp)) & 0x0080);
+
 	// The negative flag is set to the most significant bit of the result
 	setFlag(N, temp & 0x80);
-	
+
 	// Load the result into the accumulator (it's 8-bit dont forget!)
 	accReg = temp & 0x00FF;
-	
+
 	// This instruction has the potential to require an additional clock cycle
 	return 1;
 }
@@ -436,15 +438,15 @@ uint8_t cpu6502::BCC()
 {
 	if (getFlag(C) == 0)
 	{
-        //increments cycle counter because we are branching 
+        //increments cycle counter because we are branching
 		cycles++;
-		addr_abs = pc + addr_rel;
-		
+		addr_abs = prgrmCtnr + addr_rel;
+
         //adds an extra cycle if the branch is on a new page
-		if((addr_abs & 0xFF00) != (pc & 0xFF00))
+		if((addr_abs & 0xFF00) != (prgrmCtnr & 0xFF00))
 			cycles++;
-		
-		pc = addr_abs;
+
+		prgrmCtnr = addr_abs;
 	}
 	return 0;
 }
@@ -455,40 +457,40 @@ uint8_t cpu6502::BCS()
 {
 	if (getFlag(C) == 1)
 	{
-        //increments cycle counter because we are branching 
+        //increments cycle counter because we are branching
 		cycles++;
-		addr_abs = pc + addr_rel;
-		
+		addr_abs = prgrmCtnr + addr_rel;
+
         //adds an extra cycle if the branch is on a new page
-		if((addr_abs & 0xFF00) != (pc & 0xFF00))
+		if((addr_abs & 0xFF00) != (prgrmCtnr & 0xFF00))
 			cycles++;
-		
-		pc = addr_abs;
+
+		prgrmCtnr = addr_abs;
 	}
 	return 0;
 }
 
 //BRANCH IF THE ZERO BIT IS SET
-//If you do some operation to check if things are equal, you can do something like load accumalator(a) then subtract(b) 
+//If you do some operation to check if things are equal, you can do something like load accumalator(a) then subtract(b)
 //and then check the zero bit. this is an equality check yfm
 uint8_t cpu6502::BEQ(){
     if (getFlag(Z) == 1){
-        //increments cycle counter because we are branching 
+        //increments cycle counter because we are branching
 		cycles++;
-		addr_abs = pc + addr_rel;
-		
+		addr_abs = prgrmCtnr + addr_rel;
+
         //adds an extra cycle if the branch is on a new page
-		if((addr_abs & 0xFF00) != (pc & 0xFF00))
+		if((addr_abs & 0xFF00) != (prgrmCtnr & 0xFF00))
 			cycles++;
-		
-		pc = addr_abs;
+
+		prgrmCtnr = addr_abs;
 
     }
-    return 0
+    return 0;
 }
 
-//This instruction is basically a non descutive AND instruction because it doesnt change the value of the accumulator, 
-//it just ands the input and sets the flags according 
+//This instruction is basically a non descutive AND instruction because it doesnt change the value of the accumulator,
+//it just ands the input and sets the flags according
 
 uint8_t cpu6502::BIT()
 {
@@ -503,15 +505,15 @@ uint8_t cpu6502::BIT()
 //BRANCH IS NEGATIVE
 uint8_t cpu6502::BMI(){
     if (getFlag(N) == 1){
-        //increments cycle counter because we are branching 
+        //increments cycle counter because we are branching
         cycles++;
-        addr_abs = pc + addr_rel;
-        
+        addr_abs = prgrmCtnr + addr_rel;
+
         //adds an extra cycle if the branch is on a new page
-        if((addr_abs & 0xFF00) != (pc & 0xFF00))
+        if((addr_abs & 0xFF00) != (prgrmCtnr & 0xFF00))
             cycles++;
-        
-        pc = addr_abs;
+
+        prgrmCtnr = addr_abs;
 
     }
     return 0;
@@ -519,60 +521,60 @@ uint8_t cpu6502::BMI(){
 
 
 //branch if not equalt (if zero but is not set)
-uint8_t cpu6502:BNE(){
+uint8_t cpu6502::BNE(){
     if (getFlag(Z)==0){
-        //increments cycle counter because we are branching 
+        //increments cycle counter because we are branching
         cycles++;
-        addr_abs = pc + addr_rel;
-        
+        addr_abs = prgrmCtnr + addr_rel;
+
         //adds an extra cycle if the branch is on a new page
-        if((addr_abs & 0xFF00) != (pc & 0xFF00))
+        if((addr_abs & 0xFF00) != (prgrmCtnr & 0xFF00))
             cycles++;
-        
-        pc = addr_abs;
+
+        prgrmCtnr = addr_abs;
     }
     return 0;
 }
 
 //branch if postive
-uint8_t cpu6502:BPL(){
+uint8_t cpu6502::BPL(){
      if (getFlag(N)==0){
-        //increments cycle counter because we are branching 
+        //increments cycle counter because we are branching
         cycles++;
-        addr_abs = pc + addr_rel;
-        
+        addr_abs = prgrmCtnr + addr_rel;
+
         //adds an extra cycle if the branch is on a new page
-        if((addr_abs & 0xFF00) != (pc & 0xFF00))
+        if((addr_abs & 0xFF00) != (prgrmCtnr & 0xFF00))
             cycles++;
-        
-        pc = addr_abs;
+
+        prgrmCtnr = addr_abs;
     }
     return 0;
 }
 
 //this is a interreupt command
-uint8_t cpu6502:BRK(){
+uint8_t cpu6502::BRK(){
     //increments pc
-	pc++;
-	
+	prgrmCtnr++;
+
     //sets the interuppt flag
 	setFlag(I, 1);
     //writes the high byte of program counter to the stack
-	write(0x0100 + stckPtr, (pc >> 8) & 0x00FF);
+	write(0x0100 + stckPtr, (prgrmCtnr >> 8) & 0x00FF);
 	stckPtr--;
     //writes the low byte of the program counter to the stack
-	write(0x0100 + stckPtr, pc & 0x00FF);
+	write(0x0100 + stckPtr, prgrmCtnr & 0x00FF);
 	stckPtr--;
 
     //sets the break flag(indicates that the interrupt was caused by a software breakpoint)
 	setFlag(B, 1);
     //writes the status register to the stack
-	write(0x0100 + stckPtr, status);
+	write(0x0100 + stckPtr, statusReg);
 	stckPtr--;
 	setFlag(B, 0);
-    
+
     //sets program counter to contents of some random frick off address at the end of the memory
-	pc = (uint16_t)read(0xFFFE) | ((uint16_t)read(0xFFFF) << 8);
+	prgrmCtnr = (uint16_t)read(0xFFFE) | ((uint16_t)read(0xFFFF) << 8);
 	return 0;
 
 }
@@ -581,15 +583,15 @@ uint8_t cpu6502::BVC()
 {
     if (getFlag(V) == 0)
     {
-        //increments cycle counter because we are branching 
+        //increments cycle counter because we are branching
         cycles++;
-        addr_abs = pc + addr_rel;
-        
+        addr_abs = prgrmCtnr + addr_rel;
+
         //adds an extra cycle if the branch is on a new page
-        if((addr_abs & 0xFF00) != (pc & 0xFF00))
+        if((addr_abs & 0xFF00) != (prgrmCtnr & 0xFF00))
             cycles++;
-        
-        pc = addr_abs;
+
+        prgrmCtnr = addr_abs;
     }
     return 0;
 }
@@ -598,15 +600,15 @@ uint8_t cpu6502::BVS()
 {
     if (getFlag(V) == 1)
     {
-        //increments cycle counter because we are branching 
+        //increments cycle counter because we are branching
         cycles++;
-        addr_abs = pc + addr_rel;
-        
+        addr_abs = prgrmCtnr + addr_rel;
+
         //adds an extra cycle if the branch is on a new page
-        if((addr_abs & 0xFF00) != (pc & 0xFF00))
+        if((addr_abs & 0xFF00) != (prgrmCtnr & 0xFF00))
             cycles++;
-        
-        pc = addr_abs;
+
+        prgrmCtnr = addr_abs;
     }
     return 0;
 }
@@ -696,16 +698,16 @@ uint8_t cpu6502::DEC(){
 //Decrement X register
 uint8_t cpu6502::DEX(){
     xReg--;
-    setFlag(Z, x == 0x00);
-    setFlag(N, x & 0x80);
+    setFlag(Z, xReg == 0x00);
+    setFlag(N, xReg & 0x80);
     return 0;
 }
 
 //Decrement Y register
 uint8_t cpu6502::DEY(){
     yReg--;
-    setFlag(Z, y == 0x00);
-    setFlag(N, y & 0x80);
+    setFlag(Z, yReg == 0x00);
+    setFlag(N, yReg & 0x80);
     return 0;
 }
 
@@ -731,22 +733,22 @@ uint8_t cpu6502::INC(){
 //incredment x register
 uint8_t cpu6502::INX(){
     xReg++;
-    setFlag(Z, x == 0x00);
-    setFlag(N, x & 0x80);
+    setFlag(Z, xReg == 0x00);
+    setFlag(N, xReg & 0x80);
     return 0;
 }
 
-//increment y register  
+//increment y register
 uint8_t cpu6502::INY(){
     yReg++;
-    setFlag(Z, y == 0x00);
-    setFlag(N, y & 0x80);
+    setFlag(Z, yReg == 0x00);
+    setFlag(N, yReg & 0x80);
     return 0;
 }
 
 //Jump to location stored in addr abs
 uint8_t cpu6502::JMP(){
-    pc = addr_abs;
+    prgrmCtnr = addr_abs;
     return 0;
 }
 
@@ -754,16 +756,16 @@ uint8_t cpu6502::JMP(){
 //jump to subroutune
 uint8_t cpu6502::JSR(){
     //puts the pc one instruction before
-    pc--;
+    prgrmCtnr--;
     //write the high byte of the program counter to the stack
-    write(0x0100 + stckPtr, (pc >> 8) & 0x00FF);
+    write(0x0100 + stckPtr, (prgrmCtnr >> 8) & 0x00FF);
     stckPtr--;
     //write the low byte of the program conter to the stacks
-    write(0x0100 + stckPtr, pc & 0x00FF);
+    write(0x0100 + stckPtr, prgrmCtnr & 0x00FF);
     stckPtr--;
 
     //jump to the address stored
-    pc = addr_abs;
+    prgrmCtnr = addr_abs;
     return 0;
 }
 
@@ -786,7 +788,7 @@ uint8_t cpu6502::LDX(){
 }
 
 //Load the Y reg with a value
-uint8_t cpu6502:LDY(){
+uint8_t cpu6502::LDY(){
     fetch();
     yReg = fetched;
     setFlag(Z, yReg == 0x00);
@@ -836,7 +838,7 @@ uint8_t cpu6502::NOP(){
 }
 
 
-//LOGICAL OR OPERATION  
+//LOGICAL OR OPERATION
 uint8_t cpu6502::ORA(){
     fetch();
     //OR the accumulator with the fetched data
@@ -857,7 +859,7 @@ uint8_t cpu6502::PHA(){
 
 uint8_t cpu6502::PHP(){
     //pushes the status register to the stack
-    write(0x0100 + stckPtr, status);
+    write(0x0100 + stckPtr, statusReg);
     stckPtr--;
     return 0;
 }
@@ -874,12 +876,12 @@ uint8_t cpu6502::PLA(){
 uint8_t cpu6502::PLP(){
     //pops the status register from the stack
     stckPtr++;
-    status = read(0x0100 + stckPtr);
+    statusReg = read(0x0100 + stckPtr);
     setFlag(U, true);
     return 0;
 }
 
-//ROTATE LEFT A PIECE OF DATA 
+//ROTATE LEFT A PIECE OF DATA
 uint8_t cpu6502::ROL(){
     fetch();
     //rotate the bits to the left
@@ -923,15 +925,15 @@ uint8_t cpu6502::ROR(){
 uint8_t cpu6502::RTI(){
     //pops the status register from the stack
     stckPtr++;
-    status = read(0x0100 + stckPtr);
-    status &= ~B;
-	status &= ~U;
+    statusReg = read(0x0100 + stckPtr);
+    statusReg &= ~B;
+	statusReg &= ~U;
 
     //pops the program counter from the stack
     stckPtr++;
-    pc = (uint16_t)read(0x0100 + stckPtr);
+    prgrmCtnr = (uint16_t)read(0x0100 + stckPtr);
     stckPtr++;
-    pc |= (uint16_t)read(0x0100 + stckPtr) << 8;
+    prgrmCtnr |= (uint16_t)read(0x0100 + stckPtr) << 8;
     return 0;
 }
 
@@ -940,32 +942,32 @@ uint8_t cpu6502::RTS(){
     //pops the program counter from the stack
     //low byte
     stckPtr++;
-    pc = (uint16_t)read(0x0100 + stckPtr);
+    prgrmCtnr = (uint16_t)read(0x0100 + stckPtr);
     //high byte
     stckPtr++;
-    pc |= (uint16_t)read(0x0100 + stckPtr) << 8;
+    prgrmCtnr |= (uint16_t)read(0x0100 + stckPtr) << 8;
 
     //increments the program counter
-    pc++;
+    prgrmCtnr++;
     return 0;
 }
 
-//subtract with carry 
+//subtract with carry
 //TODO UNDERSTAND THE OVERLOW BIT OPERTAION
 uint8_t cpu6502::SBC()
 {
 	fetch();
-	
+
 	// Operating in 16-bit domain to capture carry out
-	
+
 	// We can invert the bottom 8 bits with bitwise xor
 	uint16_t value = ((uint16_t)fetched) ^ 0x00FF;
-	
+
 	// Notice this is exactly the same as addition from here!
-	temp = (uint16_t)a + value + (uint16_t)getFlag(C);
+	temp = (uint16_t)accReg + value + (uint16_t)getFlag(C);
 	setFlag(C, temp & 0xFF00);
 	setFlag(Z, ((temp & 0x00FF) == 0));
-	setFlag(V, (temp ^ (uint16_t)a) & (temp ^ value) & 0x0080);
+	setFlag(V, (temp ^ (uint16_t)accReg) & (temp ^ value) & 0x0080);
 	setFlag(N, temp & 0x0080);
 	accReg = temp & 0x00FF;
 	return 1;
@@ -999,7 +1001,7 @@ uint8_t cpu6502::STA()
     return 0;
 }
 
-//write x register to memory    
+//write x register to memory
 uint8_t cpu6502::STX()
 {
     write(addr_abs, xReg);
@@ -1065,10 +1067,6 @@ uint8_t cpu6502::XXX(){
 
 
 ///HELPER FUNCTIONS FOR TESTING
-bool cpu6502::complete()
-{
-	return cycles == 0;
-}
 
 
 // This is the disassembly function. Its workings are not required for emulation.
@@ -1083,7 +1081,7 @@ std::map<uint16_t, std::string> cpu6502::disassemble(uint16_t nStart, uint16_t n
 	uint16_t line_addr = 0;
 
 	// A convenient utility to convert variables into
-	// hex strings because "modern C++"'s method with 
+	// hex strings because "modern C++"'s method with
 	// streams is atrocious
 	auto hex = [](uint32_t n, uint8_t d)
 	{
@@ -1109,7 +1107,7 @@ std::map<uint16_t, std::string> cpu6502::disassemble(uint16_t nStart, uint16_t n
 		std::string sInst = "$" + hex(addr, 4) + ": ";
 
 		// Read instruction, and get its readable name
-		uint8_t opcode = bus->read(addr, true); addr++;
+		uint8_t opcode = bus->cpuRead(addr, true); addr++;
 		sInst += lookup[opcode].name + " ";
 
 		// Get oprands from desired locations, and form the
@@ -1117,72 +1115,72 @@ std::map<uint16_t, std::string> cpu6502::disassemble(uint16_t nStart, uint16_t n
 		// routines mimmick the actual fetch routine of the
 		// 6502 in order to get accurate data as part of the
 		// instruction
-		if (lookup[opcode].addrmode == &olc6502::IMP)
+		if (lookup[opcode].addrmode == &cpu6502::IMP)
 		{
 			sInst += " {IMP}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::IMM)
+		else if (lookup[opcode].addrmode == &cpu6502::IMM)
 		{
-			value = bus->read(addr, true); addr++;
+			value = bus->cpuRead(addr, true); addr++;
 			sInst += "#$" + hex(value, 2) + " {IMM}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::ZP0)
+		else if (lookup[opcode].addrmode == &cpu6502::ZP0)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = 0x00;												
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = 0x00;
 			sInst += "$" + hex(lo, 2) + " {ZP0}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::ZPX)
+		else if (lookup[opcode].addrmode == &cpu6502::ZPX)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = 0x00;														
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = 0x00;
 			sInst += "$" + hex(lo, 2) + ", X {ZPX}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::ZPY)
+		else if (lookup[opcode].addrmode == &cpu6502::ZPY)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = 0x00;														
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = 0x00;
 			sInst += "$" + hex(lo, 2) + ", Y {ZPY}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::IZX)
+		else if (lookup[opcode].addrmode == &cpu6502::IZX)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = 0x00;								
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = 0x00;
 			sInst += "($" + hex(lo, 2) + ", X) {IZX}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::IZY)
+		else if (lookup[opcode].addrmode == &cpu6502::IZY)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = 0x00;								
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = 0x00;
 			sInst += "($" + hex(lo, 2) + "), Y {IZY}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::ABS)
+		else if (lookup[opcode].addrmode == &cpu6502::ABS)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = bus->read(addr, true); addr++;
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = bus->cpuRead(addr, true); addr++;
 			sInst += "$" + hex((uint16_t)(hi << 8) | lo, 4) + " {ABS}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::ABX)
+		else if (lookup[opcode].addrmode == &cpu6502::ABX)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = bus->read(addr, true); addr++;
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = bus->cpuRead(addr, true); addr++;
 			sInst += "$" + hex((uint16_t)(hi << 8) | lo, 4) + ", X {ABX}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::ABY)
+		else if (lookup[opcode].addrmode == &cpu6502::ABY)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = bus->read(addr, true); addr++;
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = bus->cpuRead(addr, true); addr++;
 			sInst += "$" + hex((uint16_t)(hi << 8) | lo, 4) + ", Y {ABY}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::IND)
+		else if (lookup[opcode].addrmode == &cpu6502::IND)
 		{
-			lo = bus->read(addr, true); addr++;
-			hi = bus->read(addr, true); addr++;
+			lo = bus->cpuRead(addr, true); addr++;
+			hi = bus->cpuRead(addr, true); addr++;
 			sInst += "($" + hex((uint16_t)(hi << 8) | lo, 4) + ") {IND}";
 		}
-		else if (lookup[opcode].addrmode == &olc6502::REL)
+		else if (lookup[opcode].addrmode == &cpu6502::REL)
 		{
-			value = bus->read(addr, true); addr++;
+			value = bus->cpuRead(addr, true); addr++;
 			sInst += "$" + hex(value, 2) + " [$" + hex(addr + value, 4) + "] {REL}";
 		}
 

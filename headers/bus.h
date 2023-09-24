@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "cpu6502.h"
 #include "ppu2C02.h"
+#include "cartridge.h"
 #include <array>
 
 class Bus
@@ -12,16 +13,15 @@ public:
     Bus();
     ~Bus();
 
-public:
     // Devices on the bus
     cpu6502 cpu;
     ppu2C02 ppu;
     std::shared_ptr<Cartridge> cart;
 
     // dummy 64 kilobyte ram
-    std::array<uint8_t, 1024> cpuRam;
+    std::array<uint8_t, 2048> cpuRam;
 
-public:
+
     // Read and write for bus
     void cpuWrite(uint16_t addy, uint8_t data);
     uint8_t cpuRead(uint16_t addy, bool isReadOnly = false);
