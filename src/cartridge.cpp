@@ -25,49 +25,53 @@ Cartridge::Cartridge(const std::string& sFileName)
     if (ifs.is_open()){
         //read file header in
         ifs.read((char*)&header, sizeof(sHeader));
-    }
 
-    if (header.mapper1 & 0x04){
-        ifs.seekg(512, std::ios_base::cur);
-    }
+        if (header.mapper1 & 0x04){
+            ifs.seekg(512, std::ios_base::cur);
+        }
 
-    nMapperID = ((header.mapper2 >> 4) << 4) | (header.mapper1 >> 4);
+        nMapperID = ((header.mapper2 >> 4) << 4) | (header.mapper1 >> 4);
 
-    //Discover the file format
-    uint8_t nFileType = 1;
+        //Discover the file format
+        uint8_t nFileType = 1;
 
-    if(nFileType == 0){
+        if(nFileType == 0){
 
-    }
+        }
 
-    if(nFileType == 1){
-        //PRG IS THE PROGRAM ROM
-        nPRGBanks = header.prg_rom_chunks;
-        vPRGMemory.resize(nPRGBanks * 16384);
-        ifs.read((char*)vPRGMemory.data(), vPRGMemory.size());
+        if(nFileType == 1){
+            //PRG IS THE PROGRAM ROM
+            nPRGBanks = header.prg_rom_chunks;
+            vPRGMemory.resize(nPRGBanks * 16384);
+            ifs.read((char*)vPRGMemory.data(), vPRGMemory.size());
 
-        //CHR IS THE CHARACTER ROM(sprites and stuff)
-        nCHRBanks = header.chr_rom_chunks;
-        vCHRMemory.resize(nCHRBanks * 8192);
-        ifs.read((char*)vCHRMemory.data(), vCHRMemory.size());
-    }
+            //CHR IS THE CHARACTER ROM(sprites and stuff)
+            nCHRBanks = header.chr_rom_chunks;
+            vCHRMemory.resize(nCHRBanks * 8192);
+            ifs.read((char*)vCHRMemory.data(), vCHRMemory.size());
+        }
 
-    if(nFileType == 2){
+        if(nFileType == 2){
 
-    }
+        }
 
     //using polymorphism
-    switch(nMapperID){
-        case 0: pMapper = std::make_shared<mapper_000>(nPRGBanks, nCHRBanks); break;
+        switch(nMapperID){
+            case 0: pMapper = std::make_shared<mapper_000>(nPRGBanks, nCHRBanks); break;
+        }
+
+        bImageValid = true;
+        ifs.close();
     }
-
-    ifs.close();
-
 }
 
 Cartridge::~Cartridge()
 {
     //destructor
+}
+
+bool Cartridge::ImageValid(){
+ return bImageValid;
 }
 
 bool Cartridge::cpuRead(uint16_t addy, uint8_t & data)

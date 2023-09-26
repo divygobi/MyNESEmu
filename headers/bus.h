@@ -18,8 +18,8 @@ public:
     ppu2C02 ppu;
     std::shared_ptr<Cartridge> cart;
 
-    // dummy 64 kilobyte ram
-    std::array<uint8_t, 2048> cpuRam;
+    //  2 kilobyte cpu ram
+    uint8_t cpuRam[2048];
 
 
     // Read and write for bus

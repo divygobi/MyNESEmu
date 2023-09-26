@@ -133,6 +133,9 @@ void ppu2C02::cpuWrite(uint16_t addy, uint8_t data)
 }
 
 uint8_t ppu2C02::cpuRead(uint16_t addy, bool isReadOnly){
+
+        uint8_t data = 0x00;
+
         switch (addy){
             case 0x0000: // Control
                 break;
@@ -152,6 +155,7 @@ uint8_t ppu2C02::cpuRead(uint16_t addy, bool isReadOnly){
                 break;
 
         }
+        return data;
 }
 
 //reading and writing to the ppus bus
@@ -187,7 +191,7 @@ void ppu2C02::clock(){
 
     //ALWAYS KEEPS GOING
     //MIMICKS THE HARDWARE
-    cycle++
+    cycle++;
     if (cycle >= 341)
 	{
 		cycle = 0;

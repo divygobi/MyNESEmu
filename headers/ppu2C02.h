@@ -36,17 +36,17 @@ class ppu2C02{
     private:
 	olc::Pixel  palScreen[0x40];
 	// In Video
-	olc::Sprite sprScreen = olc::Sprite(256, 240);
-	olc::Sprite sprNameTable[2] = { olc::Sprite(256, 240), olc::Sprite(256, 240) };
-	olc::Sprite sprPatternTable[2] = { olc::Sprite(128, 128), olc::Sprite(128, 128) };
+//	olc::Sprite sprScreen = olc::Sprite(256, 240);
+//	olc::Sprite sprNameTable[2] = { olc::Sprite(256, 240), olc::Sprite(256, 240) };
+//	olc::Sprite sprPatternTable[2] = { olc::Sprite(128, 128), olc::Sprite(128, 128) };
 
 	// Changed To for API breaking subsequent PGE Update
 	olc::Sprite* sprScreen;
 	olc::Sprite* sprNameTable[2];
 	olc::Sprite* sprPatternTable[2];
 
-	int16_t scanline = 0
-	int16_t cycle = 0
+	int16_t scanline = 0;
+	int16_t cycle = 0;
 
     public:
             // Debugging Utilities

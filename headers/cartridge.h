@@ -22,10 +22,11 @@ class Cartridge{
         } mirror = HORIZONTAL;
 
     private:
+
         bool bImageValid = false;
 
         uint8_t nMapperID = 0;
-        //how many banks of the program cha charecter memory
+        //how many banks of the program and charecter memory respectively
         uint8_t nPRGBanks = 0;
         uint8_t nCHRBanks = 0;
 
