@@ -100,7 +100,35 @@ olc::Sprite & ppu2C02::GetNameTable(uint8_t i)
 
 olc::Sprite & ppu2C02::GetPatternTable(uint8_t i)
 {
-	return *sprPatternTable[i];
+	for(uint16_t nTileY = 0; nTileY < 16; nTileY++){
+		for(uint16_t nTileX = 0; nTileX < 16; nTileX++){
+			//a single type has 16 bytes of info, 
+			//nOffset is the BYE offset of the tile
+			uint16_t nOffset = nTileY * 256 + nTileX * 16;
+			//8rows of 8 pixles
+			for(uint16_t row = 0; row < 8; row++){
+				//ppuRead reads form the pallete memory(cartridge)
+				uint8_t tileLsb = ppuRead(i * 0x1000 + nOffset + row + 0x0000);
+				uint8_t tileMsb = ppuRead(i * 0x1000 + nOffset + row + 0x1000);
+				for(uint16_t col = 0; col < 8; col++){
+					//get the color id
+					uint8_t pixel = (tileLsb & 0x01) + (tileMsb & 0x01);
+					//shift the tile to the right
+					tileLsb >>= 1;
+					tileMsb >>= 1;
+					//set the color
+					sprPatternTable[i]->SetPixel(nTileX * 8 + (7 - col), nTileY * 8 + row, GetColorFromPaletteRam(i, pixel));
+				}
+			}
+
+		}
+	}
+}
+
+olc::Pixel ppu2C02::GetColorFromPaletteRam(uint8_t palette, uint8_t pixel)
+{
+	// This is a convenience function that takes a specified palette and pixel to get an index in the NES memory
+	return palScreen[ppuRead(0x3F00 + (palette << 2) + pixel) & 0x3F];
 }
 
 //void ppu2C02::connectBus(Bus *b)
@@ -164,10 +192,32 @@ uint8_t ppu2C02::ppuRead(uint16_t addy, bool isReadOnly){
     //mirror the data
     addy &= 0x3FFF;
 
+	//in the cartridge space
     if(cart->ppuRead(addy, data)){
 
     }
+	//pattern memory
+	else if (addy >= 0x0000 && addy <= 0x1FFF){
+		//first dim chooses whether its the left or right side of the data
+		//second dim makses the remaining bits		
+		data = tblPattern[(addy & 0x1000) >> 12][addy & 0x0FFF];
 
+	}
+	//nametable memory
+	else if (addy >=0x0000 && addy <= 0x3EFF){ 
+	
+	}
+	//palette memory
+	else if (addy >= 0x3F00 && addy <= 0x3FFF){
+		//masking bottom 5 bits
+		addy &= 0x001F;
+		//mirror addresses
+		if (addy == 0x0010) addy = 0x0000;
+		if (addy == 0x0014) addy = 0x0004;
+		if (addy == 0x0018) addy = 0x0008;
+		if (addy == 0x001C) addy = 0x000C;
+		data = tblPalette[addy];
+	}
     return data;
 }
 
@@ -178,6 +228,25 @@ void ppu2C02::ppuWrite(uint16_t addy, uint8_t data){
     if(cart->ppuWrite(addy, data)){
 
     }
+	//pattern memory
+	else if (addy >= 0x0000 && addy <= 0x1FFF){
+		tblPattern[(addy & 0x1000) >> 12][addy & 0x0FFF] = data;
+	}
+	//nametable memory
+	else if (addy >=0x0000 && addy <= 0x3EFF){ 
+	
+	}
+	//palette memory
+	else if (addy >= 0x3F00 && addy <= 0x3FFF){
+		//masking bottom 5 bits
+		addy &= 0x001F;
+		//mirror addresses
+		if (addy == 0x0010) addy = 0x0000;
+		if (addy == 0x0014) addy = 0x0004;
+		if (addy == 0x0018) addy = 0x0008;
+		if (addy == 0x001C) addy = 0x000C;
+		tblPalette[addy] = data;
+	}
 }
 
 void ppu2C02::connectCartridge(const std::shared_ptr<Cartridge>& cartridge){
